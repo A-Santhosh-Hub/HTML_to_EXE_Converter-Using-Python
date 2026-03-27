@@ -369,23 +369,24 @@ class SanConverterApp(ctk.CTk):
 
     def _build_page_build(self):
         T = self._T
+        # Use pack exclusively in this frame — _page_header already uses pack,
+        # so every child must also use pack to avoid the grid/pack conflict.
         frame = ctk.CTkFrame(self._content, fg_color=T["bg"], corner_radius=0)
-        frame.grid_columnconfigure(0, weight=1)
-        frame.grid_rowconfigure(2, weight=1)
 
         self._page_header(frame, "🔨  Build Engine",
                           "Package your HTML project into a standalone Windows .exe")
 
-        # ── Status Banner ────────────────────────────────────────────────────
+        # ── Status Banner (pack) ──────────────────────────────────────────────
         self._status_banner = ctk.CTkFrame(frame, height=56,
                                             fg_color=T["card"],
                                             corner_radius=12,
                                             border_width=1,
                                             border_color=T["border"])
-        self._status_banner.grid(row=1, column=0, padx=20, pady=(0, 8), sticky="ew")
-        self._status_banner.grid_columnconfigure(1, weight=1)
-        self._status_banner.grid_propagate(False)
+        self._status_banner.pack(fill="x", padx=20, pady=(0, 8))
+        self._status_banner.pack_propagate(False)
 
+        # Inner status row uses grid (a fresh sub-frame — no pack children yet)
+        self._status_banner.grid_columnconfigure(1, weight=1)
         self._status_dot = ctk.CTkLabel(self._status_banner, text="●",
                                          font=ctk.CTkFont("Segoe UI", 18),
                                          text_color=T["muted"])
@@ -398,17 +399,11 @@ class SanConverterApp(ctk.CTk):
                                            anchor="w")
         self._status_label.grid(row=0, column=1, sticky="ew")
 
-        # ── Build area ───────────────────────────────────────────────────────
-        build_area = ctk.CTkFrame(frame, fg_color=T["bg"], corner_radius=0)
-        build_area.grid(row=2, column=0, padx=20, pady=0, sticky="nsew")
-        build_area.grid_columnconfigure(0, weight=1)
-        build_area.grid_rowconfigure(1, weight=1)
-
-        # Progress
-        prog_frame = ctk.CTkFrame(build_area, fg_color=T["card"],
+        # ── Progress card (pack) ──────────────────────────────────────────────
+        prog_frame = ctk.CTkFrame(frame, fg_color=T["card"],
                                    corner_radius=12, border_width=1,
                                    border_color=T["border"])
-        prog_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        prog_frame.pack(fill="x", padx=20, pady=(0, 8))
 
         ctk.CTkLabel(prog_frame, text="Build Progress",
                      font=ctk.CTkFont("Segoe UI", 12, "bold"),
@@ -425,18 +420,29 @@ class SanConverterApp(ctk.CTk):
                                              text_color=T["muted"])
         self._progress_label.pack(anchor="e", padx=16, pady=(0, 10))
 
-        # Log output
-        log_frame = ctk.CTkFrame(build_area, fg_color=T["card"],
+        # ── Build button (pack, above log so it's always visible) ─────────────
+        self._build_btn = ctk.CTkButton(
+            frame,
+            text="🚀  Start Build",
+            font=ctk.CTkFont("Segoe UI", 14, "bold"),
+            height=52,
+            corner_radius=12,
+            fg_color=T["accent"],
+            hover_color=T["accent2"],
+            command=self._start_build
+        )
+        self._build_btn.pack(fill="x", padx=20, pady=(0, 8))
+
+        # ── Log card (pack, expands to fill remaining space) ──────────────────
+        log_frame = ctk.CTkFrame(frame, fg_color=T["card"],
                                   corner_radius=12, border_width=1,
                                   border_color=T["border"])
-        log_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 10))
-        log_frame.grid_columnconfigure(0, weight=1)
-        log_frame.grid_rowconfigure(1, weight=1)
+        log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 16))
 
+        # Log header row — uses its own grid sub-frame (isolated)
         log_header = ctk.CTkFrame(log_frame, fg_color="transparent")
-        log_header.grid(row=0, column=0, padx=16, pady=(12, 4), sticky="ew")
+        log_header.pack(fill="x", padx=16, pady=(12, 4))
         log_header.grid_columnconfigure(0, weight=1)
-
         ctk.CTkLabel(log_header, text="Build Log",
                      font=ctk.CTkFont("Segoe UI", 12, "bold"),
                      text_color=T["label"]).grid(row=0, column=0, sticky="w")
@@ -453,24 +459,7 @@ class SanConverterApp(ctk.CTk):
                                         text_color=T["success"],
                                         border_width=0,
                                         wrap="word")
-        self._log_box.grid(row=1, column=0, padx=12, pady=(0, 12), sticky="nsew")
-
-        # ── Build button area ────────────────────────────────────────────────
-        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        btn_frame.grid(row=3, column=0, padx=20, pady=(0, 16), sticky="ew")
-        btn_frame.grid_columnconfigure(0, weight=1)
-
-        self._build_btn = ctk.CTkButton(
-            btn_frame,
-            text="🚀  Start Build",
-            font=ctk.CTkFont("Segoe UI", 14, "bold"),
-            height=52,
-            corner_radius=12,
-            fg_color=T["accent"],
-            hover_color=T["accent2"],
-            command=self._start_build
-        )
-        self._build_btn.grid(row=0, column=0, sticky="ew")
+        self._log_box.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
         return frame
 
