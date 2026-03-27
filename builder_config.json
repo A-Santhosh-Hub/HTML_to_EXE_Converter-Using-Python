@@ -1,0 +1,16 @@
+{
+  "app_name": "MyApp",
+  "version": "1.0.0",
+  "width": 1200,
+  "height": 800,
+  "fullscreen": false,
+  "resizable": true,
+  "devtools": false,
+  "splash_enabled": true,
+  "splash_duration": 2500,
+  "icon": "",
+  "input_folder": "",
+  "output_folder": "",
+  "author": "Developed by Santhosh A",
+  "author_url": "https://a-santhosh-hub.github.io/in/"
+}

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sample Project</title>
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+  <div class="hero">
+    <div class="badge">DEMO PROJECT</div>
+    <h1>Hello from <span class="accent">SanConverter</span></h1>
+    <p class="sub">
+      This is a sample HTML project bundled into a Windows .exe<br/>
+      using SanStudio's HTML → EXE Converter.
+    </p>
+
+    <div class="features">
+      <div class="feat-card">
+        <div class="icon">⚡</div>
+        <h3>Full JavaScript</h3>
+        <p>All JS runs exactly as in browser</p>
+      </div>
+      <div class="feat-card">
+        <div class="icon">💾</div>
+        <h3>localStorage</h3>
+        <p>Data persists between sessions</p>
+        <button id="storeBtn" onclick="testStorage()">Test Storage</button>
+        <span id="storeResult"></span>
+      </div>
+      <div class="feat-card">
+        <div class="icon">🎨</div>
+        <h3>CSS Animations</h3>
+        <p>Full CSS3 support including transitions</p>
+        <div class="anim-box"></div>
+      </div>
+      <div class="feat-card">
+        <div class="icon">🌐</div>
+        <h3>Online APIs</h3>
+        <p>Internet access works when available</p>
+        <button onclick="fetchQuote()">Fetch Quote</button>
+        <p id="quoteResult" style="font-size:12px;color:#6B7A99;margin-top:6px"></p>
+      </div>
+    </div>
+
+    <div class="counter-section">
+      <h2>Click Counter (persisted with localStorage)</h2>
+      <div class="counter-display" id="counterDisplay">0</div>
+      <div class="counter-btns">
+        <button class="btn-minus" onclick="updateCounter(-1)">−</button>
+        <button class="btn-reset" onclick="resetCounter()">Reset</button>
+        <button class="btn-plus" onclick="updateCounter(1)">+</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/script.js"></script>
+</body>
+</html>
