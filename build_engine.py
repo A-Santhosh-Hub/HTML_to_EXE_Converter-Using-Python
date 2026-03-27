@@ -191,26 +191,26 @@ body {
 def main():
     import webview
 
-    # Start local server
+    # Start local server in background thread
     t = threading.Thread(target=_run_server, daemon=True)
     t.start()
-    # Give server a moment to bind
-    time.sleep(0.25)
+    # Give the HTTP server a moment to bind its port
+    time.sleep(0.35)
 
     api = _Api()
     url = f"http://127.0.0.1:{PORT}/index.html"
 
     if SPLASH_ENABLED:
-        # Build splash HTML with correct duration
-        splash = SPLASH_HTML.replace("{{APP_NAME}}", APP_NAME)\
-                             .replace("{{SPLASH_MS}}", str(SPLASH_DURATION))
-        # Write splash to temp
+        # ── Write splash HTML to a temp file ─────────────────────────────────
         import tempfile as _tmp
         tmpdir = _tmp.mkdtemp()
         splash_path = os.path.join(tmpdir, "splash.html")
+        splash = SPLASH_HTML.replace("{{APP_NAME}}", APP_NAME) \
+                             .replace("{{SPLASH_MS}}", str(SPLASH_DURATION))
         with open(splash_path, "w", encoding="utf-8") as f:
             f.write(splash)
 
+        # Create splash window BEFORE webview.start()
         splash_win = webview.create_window(
             APP_NAME,
             f"file:///{splash_path}",
@@ -220,8 +220,12 @@ def main():
             on_top=True,
         )
 
-        def _after_splash():
+        # webview.start(func=...) runs func in a background thread once GUI is ready
+        def _startup():
+            # Show splash for configured duration
             time.sleep(SPLASH_DURATION / 1000.0)
+
+            # Open the real app window
             main_win = webview.create_window(
                 APP_NAME, url,
                 width=APP_WIDTH, height=APP_HEIGHT,
@@ -230,14 +234,24 @@ def main():
                 js_api=api,
                 min_size=(400, 300),
             )
-            def _inject(w):
-                w.evaluate_js(FOOTER_JS)
-            main_win.loaded += lambda: webview.windows[1].evaluate_js(FOOTER_JS)
-            splash_win.destroy()
 
-        splash_win.loaded += lambda: threading.Thread(target=_after_splash, daemon=True).start()
-        webview.start(debug=DEVTOOLS)
+            # Close the splash
+            try:
+                splash_win.destroy()
+            except Exception:
+                pass
+
+            # Wait for the main window DOM to be ready, then inject footer
+            time.sleep(1.2)
+            try:
+                main_win.evaluate_js(FOOTER_JS)
+            except Exception:
+                pass
+
+        webview.start(_startup, debug=DEVTOOLS)
+
     else:
+        # ── No splash — open main window directly ─────────────────────────────
         win = webview.create_window(
             APP_NAME, url,
             width=APP_WIDTH, height=APP_HEIGHT,
@@ -246,10 +260,16 @@ def main():
             js_api=api,
             min_size=(400, 300),
         )
-        def _on_loaded():
-            win.evaluate_js(FOOTER_JS)
-        win.loaded += _on_loaded
-        webview.start(debug=DEVTOOLS)
+
+        def _startup():
+            # Wait for page to load then inject the footer
+            time.sleep(1.2)
+            try:
+                win.evaluate_js(FOOTER_JS)
+            except Exception:
+                pass
+
+        webview.start(_startup, debug=DEVTOOLS)
 
 
 if __name__ == "__main__":
