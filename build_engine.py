@@ -191,7 +191,7 @@ JS_POPUP_AND_BLOB = r"""
   URL.createObjectURL = function(obj){
     var u = _origCreate(obj);
     if(obj instanceof Blob || obj instanceof File){
-      _reg[u] = { blob: obj, mime: obj.type || 'text/html' };
+      _reg[u] = { blob: obj, mime: obj.type || 'application/octet-stream' };
     }
     return u;
   };
@@ -207,7 +207,27 @@ JS_POPUP_AND_BLOB = r"""
     });
   }
 
-  /* Route any URL through the Python bridge */
+  /* Decide: is this mime type a "viewable" preview, or should it always be saved? */
+  function isViewable(mime){
+    return /html|xml|svg|text\/plain/.test(mime);
+  }
+
+  /* Save a blob URL to disk via Python bridge */
+  function saveBlob(url, filename){
+    var entry = _reg[url];
+    if(!entry){ console.warn('[SAN] blob not in registry:', url); return; }
+    blobToB64(entry.blob).then(function(b64){
+      window.pywebview.api.save_blob_file(b64, entry.mime, filename);
+    }).catch(function(e){ console.error('[SAN] blob save error', e); });
+  }
+
+  /* Save a data: URI to disk via Python bridge */
+  function saveDataUri(dataUri, filename){
+    var m = dataUri.match(/^data:([^;]+);base64,(.+)$/);
+    if(m) window.pywebview.api.save_blob_file(m[2], m[1], filename);
+  }
+
+  /* Route window.open() calls */
   function route(url, title){
     title = title || document.title || 'Preview';
     if(!url || url === 'about:blank') return null;
@@ -218,15 +238,18 @@ JS_POPUP_AND_BLOB = r"""
       return null;
     }
 
-    /* Blob URL -> decode and open in new window */
+    /* Blob URL opened via window.open (no download attr) -> preview */
     if(url.startsWith('blob:')){
       var entry = _reg[url];
-      if(entry){
+      if(entry && isViewable(entry.mime)){
         blobToB64(entry.blob).then(function(b64){
           window.pywebview.api.open_blob_window(b64, entry.mime, title);
-        }).catch(function(e){ console.error('[SAN] blob error', e); });
-      } else {
-        console.warn('[SAN] blob not in registry:', url);
+        }).catch(function(e){ console.error('[SAN] blob preview error', e); });
+      } else if(entry){
+        /* Non-viewable blob opened via window.open -> save it */
+        blobToB64(entry.blob).then(function(b64){
+          window.pywebview.api.save_blob_file(b64, entry.mime, title);
+        }).catch(function(e){ console.error('[SAN] blob save error', e); });
       }
       return null;
     }
@@ -234,7 +257,13 @@ JS_POPUP_AND_BLOB = r"""
     /* data: URI */
     if(url.startsWith('data:')){
       var m = url.match(/^data:([^;]+);base64,(.+)$/);
-      if(m) window.pywebview.api.open_blob_window(m[2], m[1], title);
+      if(m){
+        if(isViewable(m[1])){
+          window.pywebview.api.open_blob_window(m[2], m[1], title);
+        } else {
+          window.pywebview.api.save_blob_file(m[2], m[1], title);
+        }
+      }
       return null;
     }
 
@@ -262,27 +291,59 @@ JS_POPUP_AND_BLOB = r"""
     var a = e.target.closest('a[href]');
     if(!a) return;
     var href = a.getAttribute('href') || '';
-    if(href.startsWith('blob:') || href.startsWith('data:')){
+    var dlName = a.getAttribute('download');
+
+    if(href.startsWith('blob:')){
       e.preventDefault(); e.stopPropagation();
-      if(window.pywebview && window.pywebview.api){
-        var fname = a.getAttribute('download') || a.textContent.trim() || 'preview';
-        route(href, fname);
+      if(!window.pywebview || !window.pywebview.api) return;
+      /* Has download attribute -> always SAVE to disk */
+      if(dlName !== null){
+        var fname = dlName || (document.title + '.bin');
+        saveBlob(href, fname);
+      } else {
+        /* No download attr -> preview if viewable, else save */
+        var entry = _reg[href];
+        if(entry && isViewable(entry.mime)){
+          blobToB64(entry.blob).then(function(b64){
+            window.pywebview.api.open_blob_window(b64, entry.mime, document.title);
+          });
+        } else if(entry){
+          saveBlob(href, document.title + '.bin');
+        }
+      }
+    } else if(href.startsWith('data:')){
+      e.preventDefault(); e.stopPropagation();
+      if(!window.pywebview || !window.pywebview.api) return;
+      var fname2 = dlName || (document.title + '.bin');
+      if(dlName !== null){
+        saveDataUri(href, fname2);
+      } else {
+        var m2 = href.match(/^data:([^;]+);/);
+        if(m2 && isViewable(m2[1])){
+          var parts = href.match(/^data:([^;]+);base64,(.+)$/);
+          if(parts) window.pywebview.api.open_blob_window(parts[2], parts[1], document.title);
+        } else {
+          saveDataUri(href, fname2);
+        }
       }
     }
   }, true);
 
-  console.log('[SAN] popup+blob patch active');
+  console.log('[SAN] popup+blob patch active (v2.2)');
 })();
 """
 
 JS_DOWNLOAD_INTERCEPT = r"""
 (function(){
   'use strict';
+
+  /* Intercept <a download> clicks for non-blob, non-data URLs */
   document.addEventListener('click', function(e){
     var a = e.target.closest('a[download]');
     if(!a) return;
     var href = a.getAttribute('href') || '';
-    if(href.startsWith('blob:') || href.startsWith('data:')) return; /* handled by blob patch */
+    /* blob: and data: are handled by the popup+blob patch above */
+    if(href.startsWith('blob:') || href.startsWith('data:')) return;
     if(href && href !== '#'){
       e.preventDefault();
       var fname = a.getAttribute('download') || 'download';
@@ -291,7 +352,23 @@ JS_DOWNLOAD_INTERCEPT = r"""
       }
     }
   }, true);
-  console.log('[SAN] download intercept active');
+
+  /* Intercept programmatic anchor clicks: JS creates <a>, sets .download, .href=blob, calls .click() */
+  var _origClick = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function(){
+    var a = this;
+    var href = a.getAttribute('href') || a.href || '';
+    var dl   = a.getAttribute('download');
+    if(dl !== null && (href.startsWith('blob:') || href.startsWith('data:'))){
+      /* Simulate the click event so popup+blob patch catches it */
+      var ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+      a.dispatchEvent(ev);
+      return;
+    }
+    return _origClick.call(a);
+  };
+
+  console.log('[SAN] download intercept active (v2.2)');
 })();
 """
 
@@ -382,15 +459,68 @@ JS_CONTEXT_MENU_ALLOW = r"""
 
 JS_FOOTER = r"""
 (function(){
+  /* ── Toast notification system ── */
+  function __sanToast(msg, type){
+    var t = document.getElementById('__san_toast');
+    if(!t){
+      t = document.createElement('div');
+      t.id = '__san_toast';
+      t.style.cssText = 'position:fixed;bottom:52px;right:20px;z-index:99999;'
+        + 'font-family:Segoe UI,sans-serif;font-size:13px;font-weight:500;'
+        + 'padding:10px 18px;border-radius:10px;pointer-events:none;'
+        + 'transition:opacity .35s,transform .35s;opacity:0;transform:translateY(10px);'
+        + 'box-shadow:0 4px 20px rgba(0,0,0,.4);max-width:320px;';
+      document.body.appendChild(t);
+    }
+    var bg  = type === 'error' ? '#EF4444' : type === 'warn' ? '#F59E0B' : '#22C55E';
+    t.style.background = bg;
+    t.style.color = '#fff';
+    t.textContent = msg;
+    t.style.opacity = '1';
+    t.style.transform = 'translateY(0)';
+    clearTimeout(t.__tid);
+    t.__tid = setTimeout(function(){
+      t.style.opacity = '0'; t.style.transform = 'translateY(10px)';
+    }, 3200);
+  }
+  window.__sanToast = __sanToast;
+
+  /* ── Wrap pywebview API calls to show toasts on download result ── */
+  function __wrapApi(){
+    if(!window.pywebview || !window.pywebview.api) return;
+    var _orig = window.pywebview.api.save_blob_file;
+    if(!_orig || _orig.__wrapped) return;
+    window.pywebview.api.save_blob_file = function(b64, mime, fname){
+      return _orig.call(window.pywebview.api, b64, mime, fname).then(function(res){
+        try {
+          var r = typeof res === 'string' ? JSON.parse(res) : res;
+          if(r && r.ok){
+            var short = r.path ? r.path.split(/[\\/]/).pop() : fname;
+            __sanToast('✔  Saved: ' + short);
+          } else if(r && r.error && r.error !== 'cancelled'){
+            __sanToast('✘  Save failed: ' + r.error, 'error');
+          }
+        } catch(e){}
+        return res;
+      });
+    };
+    window.pywebview.api.save_blob_file.__wrapped = true;
+  }
+
+  if(window.pywebview){ __wrapApi(); }
+  else { window.addEventListener('pywebviewready', __wrapApi, {once:true}); }
+
+  /* ── Footer bar ── */
   if(document.getElementById('__san_footer')) return;
   document.body.style.paddingBottom = '36px';
   var el = document.createElement('div');
   el.id = '__san_footer';
-  el.style.cssText = 'width:100%;height:32px;background:rgba(11,14,23,0.92);'
+  el.style.cssText = 'position:fixed;bottom:0;left:0;width:100%;height:32px;'
+    + 'background:rgba(11,14,23,0.92);'
     + 'display:flex;align-items:center;justify-content:center;'
     + 'font-family:Segoe UI,sans-serif;font-size:11px;color:#6B7A99;'
     + 'letter-spacing:.3px;border-top:1px solid rgba(79,142,247,0.18);'
-    + 'margin-top:24px;box-sizing:border-box';
+    + 'box-sizing:border-box;z-index:9999';
   el.innerHTML = '<span style="margin-right:4px">&#x2B21;</span>Developed by '
     + '<a href="javascript:void(0)" '
     + 'onclick="if(window.pywebview&&window.pywebview.api)window.pywebview.api.open_author()" '
@@ -511,6 +641,85 @@ class _Api:
             else:
                 with open(dest, "w", encoding="utf-8") as f: f.write(data)
             os.startfile(dest)
+            return json.dumps({"ok": True, "path": dest})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    def save_blob_file(self, b64, mime_type, filename):
+        """Called by JS when user clicks a download link with blob: or data: URL."""
+        try:
+            import tkinter.filedialog as fd
+            # Build a sensible default filename and extension
+            ext_map = {
+                "text/plain": ".txt",
+                "text/html": ".html",
+                "text/css": ".css",
+                "application/javascript": ".js",
+                "text/javascript": ".js",
+                "application/json": ".json",
+                "application/xml": ".xml",
+                "text/xml": ".xml",
+                "text/csv": ".csv",
+                "application/pdf": ".pdf",
+                "image/png": ".png",
+                "image/jpeg": ".jpg",
+                "image/gif": ".gif",
+                "image/svg+xml": ".svg",
+                "image/webp": ".webp",
+                "application/zip": ".zip",
+                "application/octet-stream": ".bin",
+            }
+            safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", filename or "download").strip("_") or "download"
+            # Add extension if missing
+            _, cur_ext = os.path.splitext(safe_name)
+            if not cur_ext:
+                safe_name += ext_map.get(mime_type.split(";")[0].strip(), ".txt")
+
+            # Figure out filetype filter for dialog
+            ext = os.path.splitext(safe_name)[1]
+            ft = [(f"*{ext} files", f"*{ext}"), ("All files", "*.*")]
+
+            # Default save path
+            dl = os.path.join(os.path.expanduser("~"), "Downloads")
+            os.makedirs(dl, exist_ok=True)
+            default_path = os.path.join(dl, safe_name)
+
+            # Open native Save As dialog
+            import tkinter as tk
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            dest = fd.asksaveasfilename(
+                parent=root,
+                title="Save File",
+                initialdir=dl,
+                initialfile=safe_name,
+                defaultextension=ext,
+                filetypes=ft,
+            )
+            root.destroy()
+
+            if not dest:
+                return json.dumps({"ok": False, "error": "cancelled"})
+
+            raw = base64.b64decode(b64)
+            # Text types: write as UTF-8 text
+            if any(t in mime_type for t in ("text/", "javascript", "json", "xml", "svg", "html", "css")):
+                try:
+                    text = raw.decode("utf-8")
+                    with open(dest, "w", encoding="utf-8") as f: f.write(text)
+                except UnicodeDecodeError:
+                    with open(dest, "wb") as f: f.write(raw)
+            else:
+                with open(dest, "wb") as f: f.write(raw)
+
+            # Open Explorer and highlight the saved file
+            try:
+                import subprocess as _sp
+                _sp.Popen(["explorer", "/select,", dest])
+            except Exception:
+                pass
+
             return json.dumps({"ok": True, "path": dest})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
@@ -811,7 +1020,8 @@ class BuildEngine:
             f"--add-data={os.path.join(build_dir,'app_config.json')}{sep}.",
         ]
         if icon_path: cmd.append(f"--icon={icon_path}")
-        for h in ["webview", "webview.platforms.winforms", "clr"]:
+        for h in ["webview", "webview.platforms.winforms", "clr",
+                  "tkinter", "tkinter.filedialog", "tkinter.messagebox"]:
             cmd += ["--hidden-import", h]
         cmd.append(runtime_path)
 
