@@ -1,9 +1,16 @@
 [
   {
-    "app_name": "MyApp",
-    "timestamp": "2026-03-28 13:10",
-    "duration": "127.9s",
+    "app_name": "TEST 7",
+    "timestamp": "2026-03-28 13:50",
+    "duration": "212.0s",
     "success": true,
-    "output": "C:/Users/santh/Downloads/TEST\\MyApp.exe"
+    "output": "C:/Users/santh/Downloads/TEST\\TEST_7.exe"
+  },
+  {
+    "app_name": "TEST 5",
+    "timestamp": "2026-03-28 13:24",
+    "duration": "157.0s",
+    "success": true,
+    "output": "C:/Users/santh/Downloads/TEST\\TEST_5.exe"
   }
 ]
