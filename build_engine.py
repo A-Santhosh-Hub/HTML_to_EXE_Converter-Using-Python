@@ -137,18 +137,30 @@ class _Api:
 FOOTER_JS = r"""
 (function() {
   if (document.getElementById('__san_footer')) return;
+
+  // Add bottom padding to body so footer doesn't overlap any content
+  document.body.style.paddingBottom = '36px';
+
   var el = document.createElement('div');
   el.id = '__san_footer';
   el.style.cssText = [
-    'position:fixed','bottom:0','left:0','right:0',
-    'height:28px','background:rgba(11,14,23,0.88)',
-    'backdrop-filter:blur(8px)',
-    'display:flex','align-items:center','justify-content:center',
-    'font-family:Segoe UI,sans-serif','font-size:11px',
-    'color:#6B7A99','z-index:2147483647','letter-spacing:.3px',
-    'border-top:1px solid rgba(79,142,247,0.18)'
+    'width:100%',
+    'height:32px',
+    'background:rgba(11,14,23,0.92)',
+    'display:flex',
+    'align-items:center',
+    'justify-content:center',
+    'font-family:Segoe UI,sans-serif',
+    'font-size:11px',
+    'color:#6B7A99',
+    'letter-spacing:.3px',
+    'border-top:1px solid rgba(79,142,247,0.18)',
+    'margin-top:24px',
+    'box-sizing:border-box'
   ].join(';');
   el.innerHTML = '<span style="margin-right:4px">⬡</span>Developed by <a href="javascript:void(0)" onclick="pywebview.api.open_author()" style="color:#4F8EF7;text-decoration:none;margin-left:4px">Santhosh A</a>';
+
+  // Append as last child of body — sits after ALL page content
   document.body.appendChild(el);
 })();
 """

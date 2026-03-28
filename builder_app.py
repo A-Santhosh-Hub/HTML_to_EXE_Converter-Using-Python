@@ -433,14 +433,62 @@ class SanConverterApp(ctk.CTk):
         )
         self._build_btn.pack(fill="x", padx=20, pady=(0, 8))
 
+        # ── Post-build success panel (hidden until a build succeeds) ──────────
+        self._success_panel = ctk.CTkFrame(
+            frame,
+            fg_color=T["surface"],
+            corner_radius=14,
+            border_width=2,
+            border_color=T["success"],
+        )
+        # Not packed yet — revealed only after a successful build via _show_success_panel()
+
+        top_row = ctk.CTkFrame(self._success_panel, fg_color="transparent")
+        top_row.pack(fill="x", padx=20, pady=(16, 4))
+        ctk.CTkLabel(top_row, text="✔",
+                     font=ctk.CTkFont("Segoe UI", 28, "bold"),
+                     text_color=T["success"]).pack(side="left", padx=(0, 12))
+        msg_col = ctk.CTkFrame(top_row, fg_color="transparent")
+        msg_col.pack(side="left", fill="x", expand=True)
+        ctk.CTkLabel(msg_col, text="Build Successful!",
+                     font=ctk.CTkFont("Segoe UI", 14, "bold"),
+                     text_color=T["success"], anchor="w").pack(anchor="w")
+        self._success_path_label = ctk.CTkLabel(
+            msg_col, text="",
+            font=ctk.CTkFont("Consolas", 10),
+            text_color=T["muted"], anchor="w", wraplength=520)
+        self._success_path_label.pack(anchor="w")
+
+        btn_row = ctk.CTkFrame(self._success_panel, fg_color="transparent")
+        btn_row.pack(fill="x", padx=20, pady=(10, 16))
+        btn_row.grid_columnconfigure((0, 1), weight=1)
+        ctk.CTkButton(
+            btn_row, text="📂  Open Output Folder",
+            font=ctk.CTkFont("Segoe UI", 12, "bold"),
+            height=42, corner_radius=10,
+            fg_color=T["card"], border_width=1,
+            border_color=T["success"],
+            hover_color=T["border"],
+            text_color=T["success"],
+            command=self._open_output_folder,
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ctk.CTkButton(
+            btn_row, text="🔄  New Build",
+            font=ctk.CTkFont("Segoe UI", 12, "bold"),
+            height=42, corner_radius=10,
+            fg_color=T["accent"], hover_color=T["accent2"],
+            text_color="#FFFFFF",
+            command=self._reset_for_new_build,
+        ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
+
         # ── Log card (pack, expands to fill remaining space) ──────────────────
-        log_frame = ctk.CTkFrame(frame, fg_color=T["card"],
+        self._log_frame = ctk.CTkFrame(frame, fg_color=T["card"],
                                   corner_radius=12, border_width=1,
                                   border_color=T["border"])
-        log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 16))
+        self._log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 16))
 
         # Log header row — uses its own grid sub-frame (isolated)
-        log_header = ctk.CTkFrame(log_frame, fg_color="transparent")
+        log_header = ctk.CTkFrame(self._log_frame, fg_color="transparent")
         log_header.pack(fill="x", padx=16, pady=(12, 4))
         log_header.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(log_header, text="Build Log",
@@ -453,7 +501,7 @@ class SanConverterApp(ctk.CTk):
                       text_color=T["muted"],
                       command=self._clear_log).grid(row=0, column=1)
 
-        self._log_box = ctk.CTkTextbox(log_frame,
+        self._log_box = ctk.CTkTextbox(self._log_frame,
                                         font=ctk.CTkFont("Consolas", 11),
                                         fg_color=T["bg"],
                                         text_color=T["success"],
@@ -920,9 +968,7 @@ class SanConverterApp(ctk.CTk):
                 self.after(0, self._log, f"  Output: {output_path}")
                 self.after(0, self._set_progress, 1.0, "100% — Done!")
                 self.after(0, self._set_status, "✔ Build succeeded!", self._T["success"])
-                self.after(0, messagebox.showinfo,
-                           "Build Complete",
-                           f"EXE created successfully!\n\n{output_path}")
+                self.after(0, self._show_success_panel, output_path)
             save_history({
                 "app_name":  cfg["app_name"],
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -931,6 +977,45 @@ class SanConverterApp(ctk.CTk):
                 "output":    output_path,
             })
             self.after(0, self._refresh_history_page)
+
+
+    # ─────────────────────────────────────────────────────────────────────────
+    #  Post-build actions
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _show_success_panel(self, output_path: str):
+        """Reveal the success panel below the build button with the output path."""
+        self._last_output_path = output_path
+        short = output_path if len(output_path) <= 72 else "…" + output_path[-70:]
+        self._success_path_label.configure(text=short)
+        # Show the panel (insert it between build button and log)
+        self._success_panel.pack(fill="x", padx=20, pady=(0, 8),
+                                  before=self._log_frame)
+
+    def _open_output_folder(self):
+        """Open the output folder in Windows Explorer."""
+        path = getattr(self, "_last_output_path", "")
+        folder = os.path.dirname(path) if path and os.path.isfile(path) else path
+        if folder and os.path.isdir(folder):
+            os.startfile(folder)
+
+    def _reset_for_new_build(self):
+        """Hide the success panel, reset all build UI, navigate to Project tab."""
+        # Hide success panel
+        self._success_panel.pack_forget()
+
+        # Reset build UI
+        self._clear_log()
+        self._set_progress(0, "0%")
+        self._set_status("Ready to build", self._T["muted"])
+        self._build_btn.configure(text="🚀  Start Build", state="normal")
+
+        # Clear only the input folder so user picks a new project
+        # (keep output folder — usually same destination)
+        self._input_var.set("")
+
+        # Navigate to Project tab so user picks the new project folder
+        self._switch_page("project")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

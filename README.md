@@ -186,12 +186,3 @@ Every build produces a `build_log.txt` in your output folder containing:
 ---
 
 *SanStudio HTML → EXE Converter — Production-grade HTML to Desktop App packager*
-
-
-![HTML into EXE Project Running Screenshot](https://github.com/A-Santhosh-Hub/HTML_to_EXE_Converter-Using-Python/blob/main/images/p4.png)
-![HTML into EXE Project Running Screenshot](https://github.com/A-Santhosh-Hub/HTML_to_EXE_Converter-Using-Python/blob/main/images/p5.png)
-![HTML into EXE Project Running Screenshot](https://github.com/A-Santhosh-Hub/HTML_to_EXE_Converter-Using-Python/blob/main/images/p1.png)
-![HTML into EXE Project Running Screenshot](https://github.com/A-Santhosh-Hub/HTML_to_EXE_Converter-Using-Python/blob/main/images/p2.png)
-![HTML into EXE Project Running Screenshot](https://github.com/A-Santhosh-Hub/HTML_to_EXE_Converter-Using-Python/blob/main/images/p3.png)
-![HTML into EXE Project Running Screenshot](https://github.com/A-Santhosh-Hub/HTML_to_EXE_Converter-Using-Python/blob/main/images/p6.png)
-
